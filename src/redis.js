@@ -1,7 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const Redis = require('ioredis');
 const config = require('./config');
+
+// Use real Redis by default, or ioredis-mock if USE_MOCK_REDIS=true
+const Redis = process.env.USE_MOCK_REDIS === 'true' 
+  ? require('ioredis-mock') 
+  : require('ioredis');
 
 const redis = new Redis({
   host: config.redis.host,
@@ -16,8 +20,10 @@ const redis = new Redis({
 });
 
 redis.on('error', (err) => {
-  // Log redis connection errors without crashing process
-  console.error('[Redis Client Error]', err.message);
+  // Only log if not mock
+  if (process.env.USE_MOCK_REDIS !== 'true') {
+    console.error('[Redis Client Error]', err.message || 'Connection refused at ' + config.redis.host + ':' + config.redis.port);
+  }
 });
 
 redis.on('connect', () => {
