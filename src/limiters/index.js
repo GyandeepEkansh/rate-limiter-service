@@ -1,4 +1,4 @@
-const { checkTokenBucket, checkTokenBucketNaive } = require('./tokenBucket');
+const { checkTokenBucket } = require('./tokenBucket');
 const { checkSlidingWindow } = require('./slidingWindow');
 
 /**
@@ -32,6 +32,5 @@ async function checkRateLimit(key, config) {
 module.exports = {
   checkRateLimit,
   checkTokenBucket,
-  checkTokenBucketNaive,
   checkSlidingWindow,
 };

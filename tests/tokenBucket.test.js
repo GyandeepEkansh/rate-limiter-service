@@ -1,16 +1,31 @@
+const request = require('supertest');
+const { app } = require('../src/server');
 const redis = require('../src/redis');
 const { checkTokenBucket } = require('../src/limiters/tokenBucket');
 
 // Mock ioredis with ioredis-mock for tests
 jest.mock('ioredis', () => require('ioredis-mock'));
 
-describe('Token Bucket Unit Tests', () => {
+describe('Token Bucket Limiter & Health API', () => {
   beforeEach(async () => {
     await redis.flushall();
   });
 
   afterAll(async () => {
     await redis.flushall();
+  });
+
+  it('GET /health returns 200 and OK status when Redis is available', async () => {
+    const res = await request(app).get('/health');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('OK');
+    expect(res.body.redis).toBe('PONG');
+  });
+
+  it('POST /check rejects requests missing "key"', async () => {
+    const res = await request(app).post('/check').send({});
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/Missing or invalid "key"/);
   });
 
   it('initializes bucket to burst and consumes 1 token', async () => {

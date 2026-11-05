@@ -1,11 +1,11 @@
 # Load Testing Guide
 
-This directory contains load testing configurations to benchmark the rate limiter service under high concurrency ($500+$ requests per second) and verify mathematical rate limit correctness.
+This directory contains the k6 load testing configuration to benchmark the rate limiter service under high concurrency (500+ requests per second) and verify mathematical rate limit correctness.
 
 ## Test Scenario
 
-- **Target Throughput**: 500-600+ requests/second
-- **Duration**: 30-60 seconds
+- **Target Throughput**: 600 requests/second (> 500 req/s requirement)
+- **Duration**: 30 seconds
 - **Traffic Pattern**:
   - 75% traffic across 50 normal client keys (`client-0` to `client-49`)
   - 25% traffic directed at a single "hot key" (`hot-client-key`)
@@ -14,7 +14,7 @@ This directory contains load testing configurations to benchmark the rate limite
 
 ---
 
-## Option 1: Run with k6 (Recommended)
+## Running the Load Test with k6
 
 ### Using installed k6 binary:
 ```bash
@@ -29,20 +29,6 @@ docker run --rm -i --network="host" grafana/k6 run - < load-test/check.js
 ### Customizing Target URL or Admin Key:
 ```bash
 k6 run -e API_URL=http://localhost:3000 -e ADMIN_API_KEY=admin-secret-key-123 load-test/check.js
-```
-
----
-
-## Option 2: Run with Native Node.js Runner (No k6 installation needed)
-
-If you do not have k6 installed, run the included native high-throughput runner:
-```bash
-node load-test/runner.js
-```
-
-### Custom parameters:
-```bash
-TARGET_RPS=700 DURATION_SECONDS=30 API_URL=http://localhost:3000 node load-test/runner.js
 ```
 
 ---

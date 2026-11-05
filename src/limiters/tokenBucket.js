@@ -1,5 +1,4 @@
 const redis = require('../redis');
-const { checkTokenBucketNaive } = require('./tokenBucketNaive');
 
 /**
  * Atomic Token Bucket Rate Limiter via Lua Script.
@@ -29,5 +28,4 @@ async function checkTokenBucket(key, { burst, rate }) {
 
 module.exports = {
   checkTokenBucket,
-  checkTokenBucketNaive,
 };

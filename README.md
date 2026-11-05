@@ -96,7 +96,7 @@ Client B: HGETALL bucket:key (sees 10 tokens before Client A writes back!)
 Client A: HMSET bucket:key tokens=9
 Client B: HMSET bucket:key tokens=9 (overwrites with stale update!)
 ```
-When tested with 100 concurrent requests with `burst = 10` and `rate = 0`, the naive implementation allows **all 100 requests** (a 1000% breach of the rate limit).
+When tested with 100 concurrent requests with `burst = 10` and `rate = 0`, a naive implementation allows all 100 requests.
 
 ### The Redis Lua Solution
 Redis executes Lua scripts atomically in a single-threaded context. No other command or script can run in parallel while a script is executing.
@@ -188,16 +188,11 @@ curl -X DELETE http://localhost:3000/admin/clients/vip-service \
 
 ---
 
-### 5. Health & Stats Check
+### 5. Health Check
 Checks service and Redis connection status.
 
 ```bash
 curl -X GET http://localhost:3000/health
-```
-
-#### Metrics / Stats Endpoint:
-```bash
-curl -X GET http://localhost:3000/health/stats
 ```
 
 ---
@@ -219,13 +214,17 @@ docker compose logs -f
 
 ## Running Automated Tests
 
-Run the full Jest test suite (including unit tests, boundary tests, and concurrency tests):
+Run the full Jest test suite:
 
 ```bash
 npm test
 ```
 
 ### Specific Test Suites:
+- Token bucket unit tests:
+  ```bash
+  npx jest tests/tokenBucket.test.js
+  ```
 - Concurrency test (validating race condition fix):
   ```bash
   npx jest tests/concurrency.test.js
@@ -238,25 +237,20 @@ npm test
   ```bash
   npx jest tests/admin.test.js
   ```
-- Redis AOF restart persistence test:
-  ```bash
-  node tests/verify-persistence.js
-  ```
 
 ---
 
 ## Load Testing Benchmarks
 
-### Running the Load Test
+### Running the Load Test with k6
 
-#### Option A: Using k6
 ```bash
 k6 run load-test/check.js
 ```
 
-#### Option B: Using the Included High-Throughput Runner
+Or via Docker:
 ```bash
-node load-test/runner.js
+docker run --rm -i --network="host" grafana/k6 run - < load-test/check.js
 ```
 
 ### Benchmark Results (30-Second Sustained Load)
@@ -271,9 +265,3 @@ node load-test/runner.js
 | **Latency (p99)** | < 100 ms | **8.42 ms** |
 | **Server Error Rate (5xx)**| 0% | **0.00%** |
 | **Hot Key Correctness** | <= B + (R * T) = 320 | **320 Allowed (100% Exact)** |
-
----
-
-## Multi-Instance Distributed Setup
-
-Because all state and rate computation resides inside Redis and relies on Redis `TIME`, multiple instances of `rate-limiter` can run behind an Nginx or AWS ALB round-robin load balancer with complete distributed consistency. No local state is kept on individual application nodes.
