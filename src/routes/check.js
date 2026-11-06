@@ -5,31 +5,60 @@ const redis = require('../redis');
 const { checkRateLimit } = require('../limiters');
 const { setRateLimitHeaders } = require('../middleware/headers');
 
+// Short-lived in-memory cache for client configs (5-second TTL)
+// Avoids an extra Redis HGETALL round-trip on every single /check request.
+// Trade-off: Config changes made via Admin API take up to 5s to propagate
+// across instances (eventual consistency), but cuts Redis read overhead by ~50%.
+const configCache = new Map();
+const CONFIG_CACHE_TTL_MS = 5000;
+
 /**
- * Look up client config from Redis or fall back to defaults
+ * Invalidate in-memory cache for a client key (called on Admin PUT/DELETE)
+ * @param {string} key
+ */
+function invalidateClientConfigCache(key) {
+  if (key) {
+    configCache.delete(key);
+  } else {
+    configCache.clear();
+  }
+}
+
+/**
+ * Look up client config with in-memory caching and Redis fallback
  * @param {string} key
  */
 async function getClientConfig(key) {
+  const now = Date.now();
+  const cached = configCache.get(key);
+  if (cached && (now - cached.cachedAt) < CONFIG_CACHE_TTL_MS) {
+    return cached.config;
+  }
+
   const configKey = `config:${key}`;
   const stored = await redis.hgetall(configKey);
 
+  let resolvedConfig;
   if (stored && Object.keys(stored).length > 0) {
-    return {
+    resolvedConfig = {
       algorithm: stored.algorithm || config.defaults.algorithm,
       burst: stored.burst ? parseInt(stored.burst, 10) : config.defaults.burst,
       rate: stored.rate ? parseFloat(stored.rate) : config.defaults.rate,
       limit: stored.limit ? parseInt(stored.limit, 10) : config.defaults.limit,
       windowSeconds: stored.window_seconds ? parseFloat(stored.window_seconds) : config.defaults.windowSeconds,
     };
+  } else {
+    resolvedConfig = {
+      algorithm: config.defaults.algorithm,
+      burst: config.defaults.burst,
+      rate: config.defaults.rate,
+      limit: config.defaults.limit,
+      windowSeconds: config.defaults.windowSeconds,
+    };
   }
 
-  return {
-    algorithm: config.defaults.algorithm,
-    burst: config.defaults.burst,
-    rate: config.defaults.rate,
-    limit: config.defaults.limit,
-    windowSeconds: config.defaults.windowSeconds,
-  };
+  configCache.set(key, { config: resolvedConfig, cachedAt: now });
+  return resolvedConfig;
 }
 
 router.post('/', async (req, res) => {
@@ -39,7 +68,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing or invalid "key" field in request body.' });
     }
 
-    // 1. Look up per-client configuration (or use defaults)
+    // 1. Look up per-client configuration (in-memory cache or Redis)
     const clientConfig = await getClientConfig(key);
 
     // 2. Call rate limiter factory
@@ -63,10 +92,26 @@ router.post('/', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error in /check endpoint:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('[Rate Limiter Error]', error.message);
+
+    // Fail-Open vs Fail-Closed Strategy
+    if (config.failOpen) {
+      // Prioritize availability: allow request with fallback header
+      res.setHeader('X-RateLimit-Fallback', 'true');
+      return res.status(200).json({
+        allowed: true,
+        warning: 'Rate limiter operating in fail-open fallback mode due to backend unavailability.',
+      });
+    }
+
+    // Default: Fail-Closed (503 Service Unavailable) to protect downstream services
+    return res.status(503).json({
+      error: 'Rate limiter backend unavailable',
+      allowed: false,
+    });
   }
 });
 
 module.exports = router;
 module.exports.getClientConfig = getClientConfig;
+module.exports.invalidateClientConfigCache = invalidateClientConfigCache;

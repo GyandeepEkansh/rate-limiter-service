@@ -4,7 +4,7 @@ FROM node:20-alpine AS builder
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Final stage
 FROM node:20-alpine
@@ -14,10 +14,13 @@ WORKDIR /usr/src/app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy node_modules from builder
-COPY --from=builder /usr/src/app/node_modules ./node_modules
-COPY package*.json ./
-COPY src/ ./src/
+# Copy dependencies and application files with node user ownership
+COPY --chown=node:node --from=builder /usr/src/app/node_modules ./node_modules
+COPY --chown=node:node package*.json ./
+COPY --chown=node:node src/ ./src/
+
+# Run as non-root user for container security
+USER node
 
 EXPOSE 3000
 

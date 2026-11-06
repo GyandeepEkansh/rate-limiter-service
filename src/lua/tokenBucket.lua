@@ -7,31 +7,31 @@ local bucketKey = KEYS[1]
 local burst = tonumber(ARGV[1])
 local rate = tonumber(ARGV[2])
 
--- 1. Get current time from Redis TIME
+-- 1. Get current time from Redis TIME (single source of truth for clock)
 local time = redis.call('TIME')
 local now_sec = tonumber(time[1])
 local now_micro = tonumber(time[2])
-local now_ms = now_sec * 1000 + math.floor(now_micro / 1000)
+local now = now_sec + (now_micro / 1000000)
 
 -- 2. Retrieve bucket state
 local tokens = burst
-local last_refill_ms = now_ms
+local last_refill = now
 
 local exists = redis.call('EXISTS', bucketKey)
 if exists == 1 then
   local stored_tokens = redis.call('HGET', bucketKey, 'tokens')
-  local stored_last = redis.call('HGET', bucketKey, 'last_refill_ms')
+  local stored_last = redis.call('HGET', bucketKey, 'last_refill')
   if stored_tokens and stored_last then
     tokens = tonumber(stored_tokens)
-    last_refill_ms = tonumber(stored_last)
+    last_refill = tonumber(stored_last)
   end
 end
 
 if not tokens then tokens = burst end
-if not last_refill_ms then last_refill_ms = now_ms end
+if not last_refill then last_refill = now end
 
 -- 3. Compute elapsed time in seconds and refill tokens
-local elapsed = math.max(0, (now_ms - last_refill_ms) / 1000)
+local elapsed = math.max(0, now - last_refill)
 tokens = math.min(burst, tokens + elapsed * rate)
 
 -- 4. Check if a token is available
@@ -51,7 +51,7 @@ else
 end
 
 -- 5. Save state back to Redis
-redis.call('HSET', bucketKey, 'tokens', tostring(tokens), 'last_refill_ms', tostring(now_ms))
+redis.call('HSET', bucketKey, 'tokens', tostring(tokens), 'last_refill', tostring(now))
 
 -- 6. Set key expiration (at least 60s, or 2 * burst / rate)
 local ttl = 60
@@ -66,11 +66,15 @@ if rate > 0 then
   reset_after = math.max(0, (burst - tokens) / rate)
 end
 
--- Return: [allowed (0 or 1), burst, remaining, reset_after (str), retry_after (str)]
+-- Compute reset epoch directly using Redis clock (avoids app server clock skew)
+local reset_epoch = now_sec + math.ceil(reset_after)
+
+-- Return: [allowed (0 or 1), burst, remaining, reset_after (str), retry_after (str), reset_epoch (str)]
 return {
   allowed,
   burst,
   remaining,
   tostring(reset_after),
-  tostring(retry_after)
+  tostring(retry_after),
+  tostring(reset_epoch)
 }

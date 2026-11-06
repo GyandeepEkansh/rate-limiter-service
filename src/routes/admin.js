@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const redis = require('../redis');
 const { requireAdminAuth, validateClientConfig } = require('../middleware/validate');
+const { invalidateClientConfigCache } = require('./check');
 
 // Protect all admin routes with requireAdminAuth
 router.use(requireAdminAuth);
@@ -9,6 +10,7 @@ router.use(requireAdminAuth);
 /**
  * PUT /admin/clients/:key
  * Stores custom rate limit configuration for a specific client key.
+ * Completely replaces old configuration to prevent stale fields when switching algorithms.
  */
 router.put('/clients/:key', validateClientConfig, async (req, res) => {
   try {
@@ -23,8 +25,12 @@ router.put('/clients/:key', validateClientConfig, async (req, res) => {
     if (limit !== undefined) hashData.limit = limit.toString();
     if (window_seconds !== undefined) hashData.window_seconds = window_seconds.toString();
 
-    // Store in Redis hash without expiry so it persists across restarts
+    // Clean overwrite: delete previous hash first so fields from prior algorithm do not linger
+    await redis.del(configKey);
     await redis.hset(configKey, hashData);
+
+    // Invalidate in-memory cache
+    invalidateClientConfigCache(key);
 
     return res.status(200).json({
       status: 'success',
@@ -77,7 +83,7 @@ router.get('/clients/:key', async (req, res) => {
 
 /**
  * DELETE /admin/clients/:key
- * Deletes stored client configuration.
+ * Deletes stored client configuration and purges active bucket/window state.
  */
 router.delete('/clients/:key', async (req, res) => {
   try {
@@ -88,6 +94,9 @@ router.delete('/clients/:key', async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ error: `No custom configuration found for client "${key}"` });
     }
+
+    // Invalidate in-memory cache
+    invalidateClientConfigCache(key);
 
     // Also clean up any active state keys
     await redis.del(`bucket:${key}`, `window:${key}`);

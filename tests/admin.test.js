@@ -5,7 +5,7 @@ const redis = require('../src/redis');
 // Mock ioredis with ioredis-mock for tests
 jest.mock('ioredis', () => require('ioredis-mock'));
 
-describe('Admin Endpoints & Dynamic Client Config (Step 6)', () => {
+describe('Admin Endpoints & Dynamic Client Config', () => {
   const adminKey = 'admin-secret-key-123';
 
   beforeEach(async () => {

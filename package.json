@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "jest --runInBand --detectOpenHandles --forceExit"
+    "test": "jest --runInBand --detectOpenHandles --forceExit",
+    "benchmark": "node scripts/run-benchmark.js",
+    "demo:race": "node scripts/demo-naive-race.js",
+    "postinstall": "node scripts/patch-mock.js"
   },
   "keywords": [
     "rate-limiter",

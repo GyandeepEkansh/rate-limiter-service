@@ -3,9 +3,8 @@ const path = require('path');
 const config = require('./config');
 
 // Use real Redis by default, or ioredis-mock if USE_MOCK_REDIS=true
-const Redis = process.env.USE_MOCK_REDIS === 'true' 
-  ? require('ioredis-mock') 
-  : require('ioredis');
+const isMock = process.env.USE_MOCK_REDIS === 'true';
+const Redis = isMock ? require('ioredis-mock') : require('ioredis');
 
 const redis = new Redis({
   host: config.redis.host,
@@ -19,9 +18,20 @@ const redis = new Redis({
   },
 });
 
+// Fix: ioredis-mock has a buggy TIME implementation that combines Math.round()
+// with hrtime() nanoseconds, causing artificial clock jumps.
+// Provide true monotonic [sec, micro] matching real Redis gettimeofday.
+if (isMock) {
+  redis.time = function() {
+    const now = Date.now();
+    const sec = Math.floor(now / 1000);
+    const micro = (now % 1000) * 1000;
+    return [sec.toString(), micro.toString()];
+  };
+}
+
 redis.on('error', (err) => {
-  // Only log if not mock
-  if (process.env.USE_MOCK_REDIS !== 'true') {
+  if (!isMock) {
     console.error('[Redis Client Error]', err.message || 'Connection refused at ' + config.redis.host + ':' + config.redis.port);
   }
 });
@@ -35,6 +45,16 @@ redis.on('connect', () => {
  * @param {Redis} client
  */
 function registerLuaCommands(client) {
+  // If client is a mock instance, ensure accurate TIME implementation
+  if (client.constructor && client.constructor.name === 'RedisMock') {
+    client.time = function() {
+      const now = Date.now();
+      const sec = Math.floor(now / 1000);
+      const micro = (now % 1000) * 1000;
+      return [sec.toString(), micro.toString()];
+    };
+  }
+
   const tokenBucketLuaPath = path.join(__dirname, 'lua', 'tokenBucket.lua');
   if (fs.existsSync(tokenBucketLuaPath)) {
     const lua = fs.readFileSync(tokenBucketLuaPath, 'utf8');

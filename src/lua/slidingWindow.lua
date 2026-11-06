@@ -9,7 +9,7 @@ local limit = tonumber(ARGV[1])
 local window_ms = tonumber(ARGV[2])
 local unique_id = ARGV[3]
 
--- 1. Get current time from Redis TIME
+-- 1. Get current time from Redis TIME (single source of truth for clock)
 local time = redis.call('TIME')
 local now_sec = tonumber(time[1])
 local now_micro = tonumber(time[2])
@@ -54,11 +54,15 @@ redis.call('PEXPIRE', windowKey, window_ms)
 local remaining = math.max(0, limit - count)
 local reset_after = window_ms / 1000
 
--- Return: [allowed (0 or 1), limit, remaining, reset_after (str), retry_after (str)]
+-- Compute reset epoch directly using Redis clock (avoids app server clock skew)
+local reset_epoch = now_sec + math.ceil(reset_after)
+
+-- Return: [allowed (0 or 1), limit, remaining, reset_after (str), retry_after (str), reset_epoch (str)]
 return {
   allowed,
   limit,
   remaining,
   tostring(reset_after),
-  tostring(retry_after)
+  tostring(retry_after),
+  tostring(reset_epoch)
 }

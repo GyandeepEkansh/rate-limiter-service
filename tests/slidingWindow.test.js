@@ -6,7 +6,7 @@ const { checkSlidingWindow } = require('../src/limiters/slidingWindow');
 // Mock ioredis with ioredis-mock for tests
 jest.mock('ioredis', () => require('ioredis-mock'));
 
-describe('Sliding Window Rate Limiter (Step 7)', () => {
+describe('Sliding Window Rate Limiter', () => {
   beforeEach(async () => {
     await redis.flushall();
   });

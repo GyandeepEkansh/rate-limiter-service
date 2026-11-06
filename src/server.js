@@ -7,6 +7,9 @@ const adminRoutes = require('./routes/admin');
 
 const app = express();
 
+// Security hardening: hide Express framework signature
+app.disable('x-powered-by');
+
 app.use(express.json());
 
 // Routes
