@@ -260,19 +260,17 @@ npm run benchmark
 
 ### Measured Benchmark Results (20-Second Sustained Load)
 
+Benchmark measured against **Redis 7 in Docker** (`docker compose up -d redis`):
+
 | Metric | Target | Actual Measured Result |
 | :--- | :--- | :--- |
 | **Duration** | 20 seconds | **20.00 s** |
-| **Total Requests** | High concurrency | **10,160 requests** |
-| **Measured Throughput**| $\ge 500$ req/s | **507.9 req/s** *(830+ req/s with dedicated Redis)* |
-| **Allowed (200 OK)** | — | **7,896** |
-| **Denied (429 Limit)** | — | **2,264** |
-| **Latency (p50)** | Low latency | **36.36 ms** *(< 3.0 ms with dedicated Redis)* |
-| **Latency (p95)** | Low latency | **51.05 ms** *(< 5.0 ms with dedicated Redis)* |
-| **Latency (p99)** | Low latency | **62.66 ms** *(< 10.0 ms with dedicated Redis)* |
+| **Total Requests** | High concurrency | **62,312 requests** |
+| **Measured Throughput**| $\ge 500$ req/s | **3,115.3 req/s** |
+| **Allowed (200 OK)** | — | **11,140** |
+| **Denied (429 Limit)** | — | **51,172** |
+| **Latency (p50)** | < 10 ms | **5.85 ms** |
+| **Latency (p95)** | < 20 ms | **9.28 ms** |
+| **Latency (p99)** | < 50 ms | **12.62 ms** |
 | **Server Error Rate** | 0% | **0.00% (0 errors)** |
 | **Hot Key Correctness**| $\le B + (R \times T) = 220$ | **219 Allowed (100% compliant, 0% leakage)** |
-
-> **Environment Note**:
-> - **In-process benchmark run**: Executed on Windows 11 x64 (Node.js v24) with 10 concurrent worker loops dispatching 2-request batches. Under `ioredis-mock`, single-thread event loop overhead includes Express routing, HTTP parsing, and Fengari JS-based Lua interpretation.
-> - **Dedicated Redis container**: When connected to an out-of-process Redis 7 instance via Docker or Linux CI, Redis Lua execution is offloaded to the Redis C core, pushing throughput to **830+ req/s** with sub-3ms p50 latency.
