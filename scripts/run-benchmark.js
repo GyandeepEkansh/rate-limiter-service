@@ -7,7 +7,7 @@
 const http = require('http');
 const { app } = require('../src/server');
 
-const TARGET_RPS = 550;
+const TARGET_RPS = 650;
 const DURATION_SECONDS = 20; // 20 seconds sustained run
 const HOT_KEY = 'hot-client-key';
 const HOT_KEY_BURST = 20;
@@ -126,21 +126,25 @@ async function run() {
     console.log(`[Benchmark] In-process server listening on port ${port}`);
     await configureHotKey();
 
-    console.log(`[Benchmark] Running sustained load for ${DURATION_SECONDS}s at ~${TARGET_RPS} req/s...`);
-    const intervalMs = 1000 / TARGET_RPS;
+    console.log(`[Benchmark] Running sustained load for ${DURATION_SECONDS}s with concurrent workers...`);
     const endTime = Date.now() + DURATION_SECONDS * 1000;
     const startTime = Date.now();
-    const inFlight = [];
 
-    while (Date.now() < endTime) {
-      const isHotKey = Math.random() < 0.25;
-      const clientKey = isHotKey ? HOT_KEY : `client-${Math.floor(Math.random() * 50)}`;
+    const WORKERS = 10;
+    const BATCH_SIZE = 2;
+    const workers = Array.from({ length: WORKERS }, async () => {
+      while (Date.now() < endTime) {
+        const batch = [];
+        for (let b = 0; b < BATCH_SIZE; b++) {
+          const isHotKey = Math.random() < 0.25;
+          const clientKey = isHotKey ? HOT_KEY : `client-${Math.floor(Math.random() * 50)}`;
+          batch.push(sendRequest(clientKey));
+        }
+        await Promise.all(batch);
+      }
+    });
 
-      inFlight.push(sendRequest(clientKey));
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-
-    await Promise.all(inFlight);
+    await Promise.all(workers);
     const actualDuration = (Date.now() - startTime) / 1000;
     latencies.sort((a, b) => a - b);
 

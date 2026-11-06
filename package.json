@@ -7,9 +7,9 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "jest --runInBand --detectOpenHandles --forceExit",
+    "test:integration": "node -e \"process.env.TEST_REAL_REDIS='true'; require('jest').run(['tests/concurrency.integration.test.js', '--runInBand']);\"",
     "benchmark": "node scripts/run-benchmark.js",
-    "demo:race": "node scripts/demo-naive-race.js",
-    "postinstall": "node scripts/patch-mock.js"
+    "demo:race": "node scripts/demo-naive-race.js"
   },
   "keywords": [
     "rate-limiter",

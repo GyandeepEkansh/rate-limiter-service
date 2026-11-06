@@ -9,11 +9,11 @@ const redis = require('../redis');
  * @param {object} options - { burst, rate }
  * @returns {Promise<{allowed: boolean, limit: number, remaining: number, reset_after: number, retry_after: number, reset_epoch: number}>}
  */
-async function checkTokenBucket(key, { burst, rate }) {
+async function checkTokenBucket(key, { burst, rate }, client = redis) {
   const bucketKey = `bucket:${key}`;
 
   // Call atomic Lua command defined on Redis client
-  const result = await redis.tokenBucketEval(bucketKey, burst, rate);
+  const result = await client.tokenBucketEval(bucketKey, burst, rate);
 
   const [allowedRaw, limitRaw, remainingRaw, resetAfterRaw, retryAfterRaw, resetEpochRaw] = result;
 

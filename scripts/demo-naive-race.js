@@ -10,18 +10,55 @@
 
 const fs = require('fs');
 const path = require('path');
+const Redis = require('ioredis');
 const MockRedis = require('ioredis-mock');
 
-// Use ioredis-mock by default for clean standalone execution
-const redis = new MockRedis();
+let redis;
+let isRealRedis = false;
 
-// Register atomic Lua script
-const luaPath = path.join(__dirname, '..', 'src', 'lua', 'tokenBucket.lua');
-const luaScript = fs.readFileSync(luaPath, 'utf8');
-redis.defineCommand('tokenBucketEval', {
-  numberOfKeys: 1,
-  lua: luaScript,
-});
+async function initRedis() {
+  const host = process.env.REDIS_HOST || 'localhost';
+  const port = parseInt(process.env.REDIS_PORT, 10) || 6379;
+
+  try {
+    const realClient = new Redis({
+      host,
+      port,
+      lazyConnect: true,
+      connectTimeout: 1500,
+      maxRetriesPerRequest: 1,
+    });
+    realClient.on('error', () => {});
+    await realClient.connect();
+    const pong = await realClient.ping();
+    if (pong === 'PONG') {
+      redis = realClient;
+      isRealRedis = true;
+      console.log(`[Demo] Connected to live Redis at ${host}:${port}`);
+    }
+  } catch {
+    redis = new MockRedis();
+    isRealRedis = false;
+    console.log('[Demo] Live Redis not detected; running in-memory with ioredis-mock.');
+  }
+
+  // Register atomic Lua script
+  const luaPath = path.join(__dirname, '..', 'src', 'lua', 'tokenBucket.lua');
+  const luaScript = fs.readFileSync(luaPath, 'utf8');
+  redis.defineCommand('tokenBucketEval', {
+    numberOfKeys: 1,
+    lua: luaScript,
+  });
+
+  if (!isRealRedis) {
+    redis.time = function () {
+      const now = Date.now();
+      const sec = Math.floor(now / 1000);
+      const micro = (now % 1000) * 1000;
+      return [sec.toString(), micro.toString()];
+    };
+  }
+}
 
 /**
  * 1. Naive Token Bucket (Read-Then-Write in plain JS)
@@ -70,10 +107,15 @@ async function atomicTokenBucketCheck(key, burst, rate) {
 }
 
 async function runDemo() {
+  await initRedis();
+
   console.log('================================================================');
   console.log(' Race Condition Demonstration: Naive vs Atomic Token Bucket');
   console.log(' Target Configuration: burst = 10, rate = 0, requests = 100');
   console.log('================================================================\n');
+
+  // Clean test keys
+  await redis.del('naive-bucket:test-client-naive', 'atomic-bucket:test-client-atomic');
 
   // 1. Run Naive Concurrency Test
   console.log('[Test 1] Firing 100 parallel requests against NAIVE implementation...');
@@ -106,6 +148,9 @@ async function runDemo() {
   }
 
   console.log('================================================================');
+  if (isRealRedis) {
+    await redis.quit();
+  }
   process.exit(0);
 }
 

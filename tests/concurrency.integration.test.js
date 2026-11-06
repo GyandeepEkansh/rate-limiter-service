@@ -1,4 +1,5 @@
 const Redis = require('ioredis');
+const { registerLuaCommands } = require('../src/redis');
 const { checkTokenBucket } = require('../src/limiters/tokenBucket');
 
 describe('Concurrency Integration Test (Live Redis Instance)', () => {
@@ -16,9 +17,11 @@ describe('Concurrency Integration Test (Live Redis Instance)', () => {
           connectTimeout: 2000,
           maxRetriesPerRequest: 1,
         });
+        realRedis.on('error', () => {});
         await realRedis.connect();
         const pong = await realRedis.ping();
         if (pong === 'PONG') {
+          registerLuaCommands(realRedis);
           isLiveRedis = true;
         }
       } catch {
@@ -49,7 +52,7 @@ describe('Concurrency Integration Test (Live Redis Instance)', () => {
 
     // Fire 100 simultaneous async requests
     const requests = Array.from({ length: 100 }, () =>
-      checkTokenBucket(key, { burst, rate })
+      checkTokenBucket(key, { burst, rate }, realRedis)
     );
 
     const results = await Promise.all(requests);

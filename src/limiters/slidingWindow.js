@@ -10,12 +10,12 @@ const redis = require('../redis');
  * @param {object} options - { limit, windowSeconds }
  * @returns {Promise<{allowed: boolean, limit: number, remaining: number, reset_after: number, retry_after: number, reset_epoch: number}>}
  */
-async function checkSlidingWindow(key, { limit, windowSeconds }) {
+async function checkSlidingWindow(key, { limit, windowSeconds }, client = redis) {
   const windowKey = `window:${key}`;
   const windowMs = Math.round(windowSeconds * 1000);
   const uniqueId = `${Date.now()}-${crypto.randomUUID()}`;
 
-  const result = await redis.slidingWindowEval(windowKey, limit, windowMs, uniqueId);
+  const result = await client.slidingWindowEval(windowKey, limit, windowMs, uniqueId);
 
   const [allowedRaw, limitRaw, remainingRaw, resetAfterRaw, retryAfterRaw, resetEpochRaw] = result;
 

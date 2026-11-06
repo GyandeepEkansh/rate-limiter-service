@@ -5,12 +5,13 @@ const redis = require('../redis');
 const { checkRateLimit } = require('../limiters');
 const { setRateLimitHeaders } = require('../middleware/headers');
 
-// Short-lived in-memory cache for client configs (5-second TTL)
+// Short-lived in-memory LRU cache for client configs (5-second TTL, max 10,000 entries)
 // Avoids an extra Redis HGETALL round-trip on every single /check request.
 // Trade-off: Config changes made via Admin API take up to 5s to propagate
 // across instances (eventual consistency), but cuts Redis read overhead by ~50%.
-const configCache = new Map();
+const MAX_CACHE_SIZE = 10000;
 const CONFIG_CACHE_TTL_MS = 5000;
+const configCache = new Map();
 
 /**
  * Invalidate in-memory cache for a client key (called on Admin PUT/DELETE)
@@ -32,6 +33,9 @@ async function getClientConfig(key) {
   const now = Date.now();
   const cached = configCache.get(key);
   if (cached && (now - cached.cachedAt) < CONFIG_CACHE_TTL_MS) {
+    // Refresh LRU recency
+    configCache.delete(key);
+    configCache.set(key, cached);
     return cached.config;
   }
 
@@ -55,6 +59,14 @@ async function getClientConfig(key) {
       limit: config.defaults.limit,
       windowSeconds: config.defaults.windowSeconds,
     };
+  }
+
+  // Enforce LRU size limit to prevent unbounded memory growth
+  if (configCache.has(key)) {
+    configCache.delete(key);
+  } else if (configCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = configCache.keys().next().value;
+    configCache.delete(oldestKey);
   }
 
   configCache.set(key, { config: resolvedConfig, cachedAt: now });

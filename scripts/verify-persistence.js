@@ -52,10 +52,10 @@ async function main() {
   console.log(`[3] Saved custom config for "${testClient}" (burst=50, rate=5)`);
 
   // Step 2: Simulate consumed tokens (bucket state)
-  const now = Date.now();
+  const nowSec = (Date.now() / 1000).toFixed(6);
   await redis.hset(bucketKey, {
     tokens: '37.5',
-    last_refill_ms: now.toString(),
+    last_refill: nowSec.toString(),
   });
   await redis.expire(bucketKey, 120);
   console.log(`[4] Wrote active bucket state for "${testClient}" (tokens=37.5)`);
